@@ -1,5 +1,7 @@
 #sen_simi_cal
 
+test email...
+
 Calculate sentence similarity by word vector
 
 To do list:
