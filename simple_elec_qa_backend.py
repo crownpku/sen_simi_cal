@@ -4,6 +4,14 @@ from scipy import spatial
 from gensim.models.keyedvectors import KeyedVectors
 import pickle
 import os
+import SimpleHTTPServer, SocketServer
+import urlparse
+import urllib
+
+PORT = 9112
+
+
+
 
 def load_word2vec(vec_path = '/home/gwang3/workspace/chatbot/chinese_word2vec/cn.skipgram.bin'):
     return KeyedVectors.load_word2vec_format('/home/gwang3/workspace/chatbot/chinese_word2vec/cn.skipgram.bin', binary=True, unicode_errors='ignore')
@@ -117,28 +125,64 @@ def load_obj(name ):
     with open(name + '.pkl', 'rb') as f:
         return pickle.load(f)
     
-def main():
-    print 'Loading Word2vec Model...'
-    model = load_word2vec()
-    print 'Loading core words...'
-    core_word_list = load_core_words(model = model)
-    print 'Generating core questions and answers...'
-    if os.path.isfile('core_qa.pkl'):
-        core_qa_dic = load_obj('core_qa')
-    else:
-        core_qa_dic = load_core_qa(core_word_list = core_word_list, model = model)
-        save_obj(core_qa_dic, 'core_qa')
-    while(1):
-        user_question = raw_input('###Please input your question (input "exit" to exit): ')
-        if user_question == 'exit':
-            return
-        else:
-            print "Your Question is:"
-            print user_question
-            answer = find_best_answer(user_question, core_qa_dic, core_word_list, model)
-            print "Best Answer is:"
-            print answer
+#Initializting
+print 'Loading Word2vec Model...'
+model = load_word2vec()
+print 'Loading core words...'
+core_word_list = load_core_words(model = model)
+print 'Generating core questions and answers...'
+if os.path.isfile('core_qa.pkl'):
+    core_qa_dic = load_obj('core_qa')
+else:
+    core_qa_dic = load_core_qa(core_word_list = core_word_list, model = model)
+    save_obj(core_qa_dic, 'core_qa')
     
+    
+    
+#Class for handling http query and send answer
+class MyHandler(SimpleHTTPServer.SimpleHTTPRequestHandler):
+    
+    def end_headers(self):
+        self.send_header('Access-Control-Allow-Origin', '*')
+        SimpleHTTPServer.SimpleHTTPRequestHandler.end_headers(self)
+        
+    def log_message(self, format, *args):
+        pass
 
-if __name__ == '__main__':
-    main()
+    def do_GET(self):
+
+        # Parse query data & params to find out what was passed
+        parsedParams = urlparse.urlparse(self.path)
+        #queryParsed = urlparse.parse_qs(parsedParams.query)
+        
+        # request is either for a file to be served up or our test
+        query_string = parsedParams.path
+       
+        self.processMyRequest(query_string)
+       
+
+    def processMyRequest(self, query_string):
+        self.send_response(200)
+        query_string = urllib.unquote(query_string).decode('utf-8').split(':')
+        if len(query_string)<=1:
+            return
+        query_string = query_string[1]
+        print "Your Question is:"
+        print query_string
+        answer = find_best_answer(query_string, core_qa_dic, core_word_list, model)
+        print "Best Answer is:"
+        print answer
+        self.send_header('Content-Type', 'text/plain')
+        self.end_headers()
+        #self.wfile.write("Hello world! " + query_string.encode());
+        self.wfile.write(answer.encode('utf-8'));
+        self.wfile.close();
+        
+        
+    
+    
+Handler = MyHandler
+httpd = SocketServer.TCPServer(("", PORT), Handler)
+print "Serving at port " +  str(PORT)
+httpd.serve_forever()
+
